@@ -1,0 +1,24 @@
+[package]
+name = "aikong-rust-core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "aikong_core"
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# 未来可添加：
+# quinn = { version = "0.11", features = ["rustls"] }   # QUIC
+# cxx = { version = "1.0" }  # 与 Qt/C++ FFI
+# image = "0.25"  # 图像处理
+
+[features]
+default = []
