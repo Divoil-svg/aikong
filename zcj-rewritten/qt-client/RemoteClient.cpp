@@ -2,6 +2,7 @@
 #include <QDataStream>
 #include <QDebug>
 #include <QDateTime>
+#include <QJsonArray>
 
 RemoteClient::RemoteClient(QObject *parent)
     : QObject(parent)
@@ -68,37 +69,46 @@ void RemoteClient::onReadyRead()
 {
     buffer.append(socket->readAll());
 
-    // 简单处理：假设每次接到完整的 JSON 响应
     QJsonDocument doc = QJsonDocument::fromJson(buffer);
     if (doc.isNull() || !doc.isObject()) {
-        // 数据不完整，等待更多数据
-        return;
+        return; // 数据不完整
     }
 
     buffer.clear();
     QJsonObject obj = doc.object();
-
     QString status = obj["status"].toString();
     QString message = obj["message"].toString();
 
-    if (message.contains("屏幕") || obj.contains("data")) {
-        // 处理捕获帧
-        // 当前 Rust 返回的是 RGB24 数据 (width=800, height=600)
-        int width = 800;
-        int height = 600;
+    if (message.contains("屏幕") && obj.contains("data")) {
+        // 真正解析 Rust 返回的图像数据
+        QJsonArray dataArray = obj["data"].toArray();
+        int width = obj["width"].toInt(800);
+        int height = obj["height"].toInt(600);
 
-        // TODO: 从 obj["data"] 真正解析字节数据
-        // 当前 Demo: 生成渐变图像以模拟效果
-        QImage img(width, height, QImage::Format_RGB888);
-        for (int y = 0; y < height; ++y) {
-            for (int x = 0; x < width; ++x) {
-                int r = (x * 255) / width;
-                int g = (y * 255) / height;
-                int b = 128;
+        if (dataArray.size() == width * height * 3) {
+            QImage img(width, height, QImage::Format_RGB888);
+            for (int i = 0; i < dataArray.size(); i += 3) {
+                int x = (i / 3) % width;
+                int y = (i / 3) / width;
+                int r = dataArray[i].toInt();
+                int g = dataArray[i+1].toInt();
+                int b = dataArray[i+2].toInt();
                 img.setPixel(x, y, qRgb(r, g, b));
             }
+            emit captureReceived(img);
+        } else {
+            // 数据大小不匹配，降级为生成测试图
+            QImage img(width, height, QImage::Format_RGB888);
+            for (int y = 0; y < height; ++y) {
+                for (int x = 0; x < width; ++x) {
+                    int r = (x * 255) / width;
+                    int g = (y * 255) / height;
+                    int b = 128;
+                    img.setPixel(x, y, qRgb(r, g, b));
+                }
+            }
+            emit captureReceived(img);
         }
-        emit captureReceived(img);
     } else {
         emit commandResult(message);
     }
