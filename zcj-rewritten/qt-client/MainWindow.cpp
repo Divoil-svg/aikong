@@ -1,10 +1,14 @@
 #include "MainWindow.h"
 #include "RemoteDesktopView.h"
+#include "ConnectionDialog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
 #include <QMessageBox>
 #include <QDateTime>
+#include <QScreen>
+#include <QGuiApplication>
+#include <QPixmap>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -33,7 +37,7 @@ void MainWindow::setupUi()
     remoteLayout->addWidget(remoteView);
 
     QHBoxLayout *btnLayout = new QHBoxLayout();
-    captureBtn = new QPushButton("捕获屏幕");
+    captureBtn = new QPushButton("捕获屏幕 (Demo)");
     btnLayout->addWidget(captureBtn);
     remoteLayout->addLayout(btnLayout);
 
@@ -69,6 +73,9 @@ void MainWindow::setupUi()
     QToolBar *toolBar = addToolBar("Main");
     toolBar->addWidget(connectBtn);
     toolBar->addWidget(disconnectBtn);
+
+    // 状态栏
+    statusBar()->showMessage("就绪 - 请点击“连接远程”");
 }
 
 void MainWindow::setupConnections()
@@ -81,11 +88,24 @@ void MainWindow::setupConnections()
 
 void MainWindow::onConnectClicked()
 {
-    isConnected = true;
-    connectBtn->setEnabled(false);
-    disconnectBtn->setEnabled(true);
-    appendLog("已连接到远程目标 (Rust 后端通信已建立)");
-    // TODO: 调用 Rust FFI 建立连接
+    ConnectionDialog dialog(this);
+    if (dialog.exec() == QDialog::Accepted) {
+        QString host = dialog.getHost();
+        quint16 port = dialog.getPort();
+        QString token = dialog.getToken();
+
+        // TODO: 使用 host:port + token 调用 Rust 网络层建立真实连接
+        appendLog(QString("正在连接 %1:%2 ...").arg(host).arg(port));
+        if (!token.isEmpty()) {
+            appendLog("已提供认证 Token");
+        }
+
+        isConnected = true;
+        connectBtn->setEnabled(false);
+        disconnectBtn->setEnabled(true);
+        statusBar()->showMessage(QString("已连接到 %1:%2").arg(host).arg(port));
+        appendLog("连接成功（模拟模式 - Rust 后端待实现）");
+    }
 }
 
 void MainWindow::onDisconnectClicked()
@@ -93,6 +113,7 @@ void MainWindow::onDisconnectClicked()
     isConnected = false;
     connectBtn->setEnabled(true);
     disconnectBtn->setEnabled(false);
+    statusBar()->showMessage("已断开");
     appendLog("已断开连接");
 }
 
@@ -102,9 +123,21 @@ void MainWindow::onCaptureScreenClicked()
         QMessageBox::warning(this, "警告", "请先连接远程");
         return;
     }
-    appendLog("正在请求屏幕捕获...");
-    // TODO: 通过 Rust capture 模块获取并显示在 remoteView
-    remoteView->updateFrame(); // 示例
+
+    appendLog("正在捕获屏幕...");
+
+    // Demo: 捕获当前主机屏幕（实际应从远程获取）
+    QScreen *screen = QGuiApplication::primaryScreen();
+    if (screen) {
+        QPixmap pixmap = screen->grabWindow(0);
+        QImage image = pixmap.toImage();
+        remoteView->updateFrame(image);
+        appendLog(QString("屏幕捕获成功 - 尺寸: %1x%2").arg(image.width()).arg(image.height()));
+    } else {
+        appendLog("无法获取屏幕");
+    }
+
+    // TODO: 通过 Rust capture 模块从真正的远程目标获取
 }
 
 void MainWindow::onExecuteCommandClicked()
@@ -113,7 +146,7 @@ void MainWindow::onExecuteCommandClicked()
     if (cmd.isEmpty()) return;
 
     appendLog("执行命令: " + cmd);
-    // TODO: 发送到 Rust 后端执行
+    // TODO: 发送到 Rust 后端执行并显示结果
     commandLineEdit->clear();
 }
 
