@@ -1,6 +1,7 @@
 #include "RemoteClient.h"
 #include <QDataStream>
 #include <QDebug>
+#include <QDateTime>
 
 RemoteClient::RemoteClient(QObject *parent)
     : QObject(parent)
@@ -28,7 +29,7 @@ void RemoteClient::disconnectFromServer()
 void RemoteClient::requestCapture()
 {
     if (socket->state() != QAbstractSocket::ConnectedState) {
-        emit errorOccurred("Not connected");
+        emit errorOccurred("Not connected to server");
         return;
     }
 
@@ -67,22 +68,38 @@ void RemoteClient::onReadyRead()
 {
     buffer.append(socket->readAll());
 
-    // 简单处理：假设每次接到完整 JSON
+    // 简单处理：假设每次接到完整的 JSON 响应
     QJsonDocument doc = QJsonDocument::fromJson(buffer);
-    if (doc.isNull()) return;
+    if (doc.isNull() || !doc.isObject()) {
+        // 数据不完整，等待更多数据
+        return;
+    }
 
     buffer.clear();
-
     QJsonObject obj = doc.object();
-    QString status = obj["status"].toString();
 
-    if (obj.contains("data") && obj["message"].toString().contains("屏幕")) {
-        // 处理捕获帧 (Demo: 假设收到 RGB 数据后生成 QImage)
-        // 实际应解析宽高并转换
-        QImage img(800, 600, QImage::Format_RGB888);
-        img.fill(Qt::blue); // Demo 效果
+    QString status = obj["status"].toString();
+    QString message = obj["message"].toString();
+
+    if (message.contains("屏幕") || obj.contains("data")) {
+        // 处理捕获帧
+        // 当前 Rust 返回的是 RGB24 数据 (width=800, height=600)
+        int width = 800;
+        int height = 600;
+
+        // TODO: 从 obj["data"] 真正解析字节数据
+        // 当前 Demo: 生成渐变图像以模拟效果
+        QImage img(width, height, QImage::Format_RGB888);
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                int r = (x * 255) / width;
+                int g = (y * 255) / height;
+                int b = 128;
+                img.setPixel(x, y, qRgb(r, g, b));
+            }
+        }
         emit captureReceived(img);
     } else {
-        emit commandResult(obj["message"].toString());
+        emit commandResult(message);
     }
 }
